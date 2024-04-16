@@ -46,9 +46,9 @@ void main(List<String> arguments) async {
     print("Ready!");
   });
 
-  try {
-    //Listen to all incoming messages
-    client.onMessageCreate.listen((MessageCreateEvent e) async {
+  //Listen to all incoming messages
+  client.onMessageCreate.listen((MessageCreateEvent e) async {
+    try {
       //This is needed to prevent an endless loop of bots replying to each other
       //(if you have more than one)
       if ((e.message.author is! User) || (e.message.author as User).isBot) {
@@ -69,11 +69,13 @@ void main(List<String> arguments) async {
         e.message.channel.sendMessage(messageBuilder);
       }
       //the bot didn't trigger, store the message to feed context
-      else {}
-    });
-  } catch (e) {
-    print(e);
-  }
+      else {
+        history.store(e.message.content);
+      }
+    } catch (e) {
+      print(e);
+    }
+  });
 }
 
 bool checkIfBotTriggered(User bot, Message message, List<String> triggers) {

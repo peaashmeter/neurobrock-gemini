@@ -5,7 +5,7 @@ import 'package:neurobrock2/api.dart';
 import 'package:neurobrock2/constants.dart';
 
 class History {
-  static const maxSize = 10;
+  static const maxSize = 50;
 
   final Queue<Message> messages = Queue();
 
@@ -53,7 +53,7 @@ class History {
 enum MessageRoles { user, bot }
 
 class Message {
-  static const maxLength = 1000;
+  static const maxLength = 200;
 
   final MessageRoles role;
   final String content;
