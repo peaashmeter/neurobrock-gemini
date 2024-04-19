@@ -1,6 +1,5 @@
 import 'dart:collection';
 
-import 'package:characters/characters.dart';
 import 'package:neurobrock/api.dart';
 import 'package:neurobrock/constants.dart';
 
@@ -10,27 +9,20 @@ class History {
   final Queue<Message> messages = Queue();
 
   @override
-  String toString() => messages.toSet().fold(
+  String toString() => messages.fold(
       basePrompt,
       (previousValue, element) => '$previousValue${switch (element.role) {
-            MessageRoles.user => '${element.author}: ${element.content}',
-            _ => '$selfName: ${element.content}'
+            MessageRoles.user =>
+              '${element.author} написал: ${element.content}',
+            _ => 'Ты ответил: ${element.content}'
           }}\n');
 
   void _add(Message m) {
-    var m_ = m;
-    if (m.content.length > Message.maxLength) {
-      m_ = Message(
-          role: m.role,
-          author: m.author,
-          content: m.content.characters.take(Message.maxLength).string);
-    }
-
     if (messages.length > maxSize) {
       messages.removeFirst();
     }
 
-    messages.add(m_);
+    messages.add(m);
   }
 
   void store({required String content, required String author}) {
@@ -45,11 +37,13 @@ class History {
         Message(role: MessageRoles.user, author: author, content: content);
     _add(request);
 
-    final prompt = '${toString()}Ответ: ';
+    final prompt = '${toString()}Ты ответил: ';
     final generated = await generatePhrase(prompt);
     final response =
         Message(role: MessageRoles.bot, author: author, content: generated);
     _add(response);
+
+    print(toString());
   }
 
   Message? get last => messages.lastOrNull;
@@ -58,8 +52,6 @@ class History {
 enum MessageRoles { user, bot }
 
 class Message {
-  static const maxLength = 200;
-
   final MessageRoles role;
   final String author;
   final String content;

@@ -89,8 +89,8 @@ String formatAuthor(MessageAuthor author) {
   }
   final username = author.username;
 
-  if (displayName == null) return '($username)';
-  return '($username, $displayName)';
+  if (displayName == null) return username;
+  return '$displayName ($username)';
 }
 
 bool checkIfBotTriggered(User bot, Message message, List<String> triggers) {

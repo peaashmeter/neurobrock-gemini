@@ -16,6 +16,7 @@ Future<String> generatePhrase(String input) async {
         ],
       },
     ],
+    "generationConfig": {'maxOutputTokens': 512},
     "safetySettings": [
       {
         "category": 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
