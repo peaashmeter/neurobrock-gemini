@@ -1,6 +1,6 @@
-name: neurobrock2
-description: Neurobrock instance, which uses a fine-tuned gpt-3.5-curie
-version: 1.0.0
+name: neurobrock
+description: Neurobrock, fine-tuned with all the history of my discord-server. Uses Gemini AI.
+version: 3.1.0
 # homepage: https://www.example.com
 
 environment:

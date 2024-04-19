@@ -1,6 +1,6 @@
 import 'package:googleapis_auth/auth_io.dart';
 import 'package:http/http.dart' as http;
-import 'package:neurobrock2/secret/credentials.dart';
+import 'package:neurobrock/secret/credentials.dart';
 
 Future<AccessCredentials> obtainCredentials() async {
   final scopes = [

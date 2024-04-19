@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
-import 'package:neurobrock2/auth.dart';
-import 'package:neurobrock2/constants.dart';
+import 'package:neurobrock/auth.dart';
+import 'package:neurobrock/constants.dart';
 
 Future<String> generatePhrase(String input) async {
   final accessToken = (await obtainCredentials()).accessToken.data;
