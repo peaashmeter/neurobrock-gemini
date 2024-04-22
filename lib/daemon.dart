@@ -91,7 +91,7 @@ class ChannelDaemon {
         ..['timestamp'] = DateTime.now().toIso8601String();
       print(data);
 
-      if (data['message'] == null || data['value'] < 0.5) return;
+      if (data['content'] == null || data['value'] < 0.5) return;
 
       if (data['referencedMessage'] == null) {
         await channel.sendMessage(MessageBuilder(content: data['content']));
