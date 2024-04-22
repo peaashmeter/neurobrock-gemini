@@ -18,3 +18,4 @@ dependencies:
   http: ^1.1.0
   nyxx: ^6.2.1
   nyxx_commands: ^6.0.2
+  google_generative_ai: ^0.3.0
