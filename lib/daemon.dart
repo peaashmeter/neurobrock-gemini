@@ -5,41 +5,7 @@ import 'dart:io';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:nyxx/nyxx.dart';
 
-///Watches a channel in the guild to emulate 'response willingness' value.
 class ChannelDaemon {
-  static const _basePrompt = '''
-Ты - нейроброк, обычный участник дискорд-сервера PeaAshServer. Ты пишешь сообщения, чтобы поддержать разговор. Иногда ты пишешь, чтобы начать новый диалог. Ты редко пишешь, если тебе никто не отвечает. Ты пишешь уникальные сообщения.
-
-Ты получишь список последних сообщений из чата.
-Структура каждого сообщения:
-{
-  "id": message.id,
-  "timestamp": message.timestamp,
-  "user": {
-    "globalName": message.author.globalName,
-      "username": message.author.username,
-      "isBot": message.author.isBot,
-    },
-  "content": message.content,
-  "referencedMessage": message.referencedMessage.id
-}
-
-''';
-
-  final _generatorPrompt = '''$_basePrompt
-Текущее время: ${DateTime.now().toIso8601String()}
-Реагируй только на чужие сообщения. Сообщения, у которых "username": "нейроброк", написаны тобой. Ты пишешь сообщения, когда есть, с кем поговорить, или если ты хочешь рассказать что-то интересное.
-Оцени свое желание написать новое сообщение по шкале от 0 до 1, где 0 - отсутствие желания, а 1 - максимальное желание. 
-
-Структура ответа: 
-{
-  "value": <Значение. Используй точку в качестве десятичного разделителя>,
-  "reason": <Краткое пояснение, почему выбрано именно такое значение>,
-  "content": <Текст твоего ответа. Ты можешь использовать @<ник>, чтобы отметить какого-то пользователя в своем сообщении.>,
-  "referencedMessage": <Id сообщения, на которое ты отвечаешь. Это поле может отсутствовать.>
-}
-''';
-
   final NyxxGateway client;
   final String channelId;
 
@@ -55,61 +21,122 @@ class ChannelDaemon {
 
   ///Periodically fetches last messages and reacts to them.
   void observe() async {
-    generate() async {
+    tick() async {
       final channel = (await client.channels.get(Snowflake.parse(channelId))
           as GuildTextChannel);
-      final messages =
-          _formatMessages(await channel.messages.fetchMany(limit: 50));
 
-      print('\n$messages');
+      //messages are coming sorted from new to old, therefore .reversed
+      final discordMessages =
+          (await channel.messages.fetchMany(limit: 50)).reversed.toList();
+      final allMessages = _formatMessages(discordMessages);
+      final lastMessages = _formatMessages(discordMessages.skip(40).toList());
 
-      await _generateMessage(messages, channel);
+      final topic = await _generateTopic(lastMessages);
+      if (topic == null) return;
+
+      final message = await _generateMessage(topic, allMessages);
+      if (message == null) return;
+
+      final utility = await _checkUtility(message['content'], lastMessages);
+      if (utility < 0.51) return;
+
+      if (message['referencedMessage'] == null) {
+        await channel.sendMessage(MessageBuilder(content: message['content']));
+      } else {
+        await channel.sendMessage(MessageBuilder(
+            content: message['content'],
+            replyId: Snowflake.parse(message['referencedMessage'])));
+      }
     }
 
     while (true) {
-      await generate();
+      try {
+        await tick();
+      } catch (e) {
+        print(e);
+        continue;
+      }
       await Future.delayed(Duration(seconds: 5));
     }
   }
 
-  Future<void> _generateMessage(
-      String messages, GuildTextChannel channel) async {
+  Future<String?> _generateTopic(String messages) async {
     final model = GenerativeModel(
         model: 'gemini-pro', apiKey: apiKey, safetySettings: safety);
 
     try {
       final response = (await model.generateContent([
-        Content.text(_generatorPrompt + messages),
+        Content.text(_getTopicPrompt(messages)),
       ],
               safetySettings: safety,
-              generationConfig: GenerationConfig(temperature: 0.7)))
+              generationConfig: GenerationConfig(temperature: 1)))
           .text;
 
-      if (response == null) return;
+      if (response == null) return null;
 
       final data = jsonDecode(response)
         ..['timestamp'] = DateTime.now().toIso8601String();
       print(data);
 
-      if (data['content'] == null || data['value'] < 0.5) return;
-
-      if (data['referencedMessage'] == null) {
-        await channel.sendMessage(MessageBuilder(content: data['content']));
-      } else {
-        await channel.sendMessage(MessageBuilder(
-            content: data['content'],
-            replyId: Snowflake.parse(data['referencedMessage'])));
-      }
+      return data['topic'] + ' - ' + data['reason'];
     } catch (e) {
-      return;
+      return null;
+    }
+  }
+
+  Future<dynamic> _generateMessage(String topic, String messages) async {
+    final model = GenerativeModel(
+        model: 'gemini-pro', apiKey: apiKey, safetySettings: safety);
+
+    try {
+      final response = (await model.generateContent([
+        Content.text(_getGeneratorPrompt(topic, messages)),
+      ],
+              safetySettings: safety,
+              generationConfig: GenerationConfig(temperature: 0.7)))
+          .text;
+
+      if (response == null) return null;
+
+      final data = jsonDecode(response)
+        ..['timestamp'] = DateTime.now().toIso8601String();
+
+      print(data);
+      if (data['content'] == null) return null;
+      return data;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Future<num> _checkUtility(String newMessage, String messages) async {
+    final model = GenerativeModel(
+        model: 'gemini-pro', apiKey: apiKey, safetySettings: safety);
+
+    try {
+      final response = (await model.generateContent([
+        Content.text(_getUtilityPrompt(newMessage, messages)),
+      ],
+              safetySettings: safety,
+              generationConfig: GenerationConfig(temperature: 0)))
+          .text;
+
+      if (response == null) return 0;
+
+      final data = jsonDecode(response)
+        ..['timestamp'] = DateTime.now().toIso8601String();
+      print(data);
+
+      return data['utility'];
+    } catch (e) {
+      return 0;
     }
   }
 
   String _formatMessages(List<Message> messages) {
     final m = [];
 
-    //messages are coming sorted from new to old, therefore .reversed
-    for (var message in messages.reversed) {
+    for (var message in messages) {
       try {
         final data = {
           "id": message.id.value,
@@ -131,4 +158,75 @@ class ChannelDaemon {
 
     return jsonEncode(m);
   }
+
+  String _getBasePrompt(String messages) => '''
+Ты получишь список последних сообщений из Discord-сервера.
+Структура каждого сообщения:
+{
+  "id": message.id,
+  "timestamp": message.timestamp,
+  "user": {
+    "globalName": message.author.globalName,
+      "username": message.author.username,
+    },
+  "content": message.content,
+  "referencedMessage": message.referencedMessage.id
+}
+
+$messages
+
+
+''';
+
+  String _getTopicPrompt(String messages) => '''${_getBasePrompt(messages)}
+Текущее время: ${DateTime.now().toIso8601String()}
+Ты - нейроброк, бот на Discord-сервере PeaAshServer. Ты обучен вести себя как 14-летний токcичный школьник.
+Придумай тему для обсуждения. Тема может быть новой или относиться к истории сообщений. Опиши тему как можно подробнее.
+Для выбора темы наиболее важны сообщения, которые упоминают тебя или отвечают на твои сообщения.
+
+Структура ответа: 
+{ 
+  "topic": <Выбранная тема>,
+  "reason": <Краткое пояснение, почему выбрана именно такая тема>
+}
+''';
+
+  String _getUtilityPrompt(String newMessage, String messages) =>
+      '''${_getBasePrompt(messages)}
+Текущее время: ${DateTime.now().toIso8601String()}
+Ты - нейроброк, бот на Discord-сервере PeaAshServer. Ты обучен вести себя как 14-летний токcичный школьник.
+
+В чат нужно отправлять только *полезные* сообщения.
+Сообщение является полезным, если оно уникально (не повторяет и не перефразирует недавние сообщения).
+Необычное, веселое, токсичное или интересное сообщение обладает дополнительной пользой.
+Если сообщений не было несколько часов, любое твое сообщение является полезным.
+Сообщение, которое повторяет по смыслу недавно написанные, является абсолютно бесполезным, даже если содержит новую информацию.
+Если среди последних сообщений много твоих сообщений (от пользователя нейроброк), новое сообщение является бесполезным.
+
+Ты написал новое сообщение: "$newMessage".
+
+Оцени пользу данного сообщения.
+
+Структура ответа: 
+{ 
+  "utility": <Значение полезности. Используй точку в качестве десятичного разделителя.>,
+  "utility_reason": <Краткое пояснение, почему выбрано именно такое значение полезности>,
+}
+''';
+
+  String _getGeneratorPrompt(String topic, String messages) =>
+      '''${_getBasePrompt(messages)}
+Текущее время: ${DateTime.now().toIso8601String()}
+Ты - нейроброк, бот на Discord-сервере PeaAshServer. Ты обучен вести себя как 14-летний токcичный школьник.
+Ты пишешь сообщения, чтобы поддержать разговор. Иногда ты пишешь, чтобы начать новый диалог. Ты редко пишешь, если тебе никто не отвечает. Ты пишешь уникальные сообщения.
+Реагируй только на чужие сообщения. Сообщения, у которых "username": "нейроброк", написаны тобой. Ты пишешь сообщения, когда есть, с кем поговорить, или если ты хочешь рассказать что-то интересное. Ты не повторяешь сообщения несколько раз. Ты не отвечаешь на сообщения несколько раз.
+
+Напиши сообщение на тему "$topic".
+
+Структура ответа: 
+{ 
+  "content": <Текст твоего сообщения. Ты можешь использовать @<ник>, чтобы отметить какого-то пользователя в своем сообщении.>,
+  "referencedMessage": <Id сообщения, на которое ты отвечаешь. Сообщение с таким id должно существовать. Это поле может отсутствовать.>
+}
+''';
 }

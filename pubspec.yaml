@@ -1,6 +1,6 @@
 name: neurobrock
 description: Neurobrock, fine-tuned with all the history of my discord-server. Uses Gemini AI.
-version: 3.1.0
+version: 3.3.1
 # homepage: https://www.example.com
 
 environment:
